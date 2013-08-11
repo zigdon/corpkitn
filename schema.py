@@ -11,6 +11,26 @@ def init_db(path):
     Base.metadata.create_all(engine)
     Session.configure(bind=engine)
 
+def find_or_create(session, model, data=None, **kwargs):
+    """Find or create an object.
+
+    returns:
+      (possibly new) objects,
+      was it created
+    """
+
+    instance = session.query(model).filter_by(**kwargs).first()
+
+    if instance:
+        return instance, False
+    else:
+        if data:
+            instance = model(**data)
+        else:
+            instance = model(**kwargs)
+        session.add(instance)
+        return instance, True
+
 account_api_m2m = Table('account_key_m2m', Base.metadata,
     Column('account_pk', String, ForeignKey('account.account')),
     Column('api_key_pk', Integer, ForeignKey('api_key.keyid'))
