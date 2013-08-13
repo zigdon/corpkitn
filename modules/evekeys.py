@@ -1,4 +1,4 @@
-from Queue import queue, Empty
+from Queue import Queue, Empty
 
 import logging
 import threading
@@ -26,8 +26,8 @@ class EveKeysModule(Module):
         super(EveKeysModule, self).__init__(*args, **kwargs)
 
         self.cache = evelink.cache.sqlite.SqliteCache(".evecache.sqlite3")
-        self.results = queue()
-        self.tasks = queue()
+        self.results = Queue()
+        self.tasks = Queue()
 
         for i in range(5):
             t = threading.Thread(target=self._worker)
