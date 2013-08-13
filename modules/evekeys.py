@@ -1,4 +1,4 @@
-from Queue import queue
+from Queue import queue, Empty
 
 import logging
 import threading
@@ -57,7 +57,11 @@ class EveKeysModule(Module):
 
     def _worker():
         while not self.stop:
-            request = self.tasks.get()
+            try:
+                request = self.tasks.get(True, 5)
+            except Empty:
+                continue
+
             _add_key(request)
             self.tasks.task_done()
 
@@ -125,10 +129,15 @@ class EveKeysModule(Module):
             len(characters),
             ", ".join([char['name'] for char in characters]))
 
-
     def add_key(self, **kwargs):
-        self.tasks.put(kwargs)
+        """Look up a given API key, associate with account and characters.
 
+        Args:
+            keyid - API key id.
+            vcode - API key verification.
+            metadata['account'] - IRC account name.
+        """
+        self.tasks.put(kwargs)
 
 
 # vim: set ts=4 sts=4 sw=4 et:
