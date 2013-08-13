@@ -1,22 +1,16 @@
-from Queue import Queue, Empty
-
 import logging
+import Queue
 import threading
 import time
 
 import evelink
 import evelink.cache.sqlite
-
 from kitnirc.modular import Module
 
 import schema
 
 
 _log = logging.getLogger(__name__)
-
-
-class EveKeyError(Exception):
-    pass
 
 
 class EveKeysModule(Module):
@@ -26,8 +20,8 @@ class EveKeysModule(Module):
         super(EveKeysModule, self).__init__(*args, **kwargs)
 
         self.cache = evelink.cache.sqlite.SqliteCache(".evecache.sqlite3")
-        self.results = Queue()
-        self.tasks = Queue()
+        self.results = Queue.Queue()
+        self.tasks = Queue.Queue()
 
         for i in range(5):
             t = threading.Thread(target=self._worker)
@@ -47,19 +41,21 @@ class EveKeysModule(Module):
             if self.tasks.empty():
                 break
 
-            _log.info("Evekeys still has %d threads outstanding." %
-                       self.tasks.qsize())
+            _log.info(
+                "Shutting down - EveKeys still has %d threads outstanding." %
+                self.tasks.qsize())
             time.sleep(1)
 
         if not self.tasks.empty():
-            _log.warning("Evekeys giving up with %d threads outstanding." %
-                          self.tasks.qsize())
+            _log.warning(
+                "Shutting down - giving up on EveKeys %d outstanding threads." %
+                self.tasks.qsize())
 
     def _worker():
         while not self.stop:
             try:
                 request = self.tasks.get(True, 5)
-            except Empty:
+            except Queue.Empty:
                 continue
 
             _add_key(request)
