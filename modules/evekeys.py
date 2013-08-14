@@ -42,19 +42,19 @@ class EveKeysModule(Module):
                 break
 
             _log.info(
-                "Shutting down - EveKeys still has %d threads outstanding." %
+                "EveKeys shutting down - %d threads still outstanding." %
                 self.tasks.qsize())
             time.sleep(1)
 
         if not self.tasks.empty():
             _log.warning(
-                "Shutting down - giving up on EveKeys %d outstanding threads." %
+                "EveKeys shutting down - giving up on %d outstanding threads." %
                 self.tasks.qsize())
 
     def _worker():
         while not self.stop:
             try:
-                request = self.tasks.get(True, 5)
+                request = self.tasks.get(True, 1)
             except Queue.Empty:
                 continue
 
@@ -64,7 +64,7 @@ class EveKeysModule(Module):
     def _add_key(request):
         keyid = request['keyid']
         vcode = request['vcode']
-        irc_account = request['metadata']['account'].lower()
+        irc_account = request['metadata']['account']
 
         try:
             api = evelink.api.API(api_key(keyid, vcode), cache=self.cache)
@@ -72,7 +72,7 @@ class EveKeysModule(Module):
             result = account.key_info()
         except evelink.APIError as e:
             _log.warn("Error loading API key(%s): %s" % (keyid, e))
-            self.results.put((request, "Failed to load api key."))
+            self.results.put((request, "Failed to load api key %s." % keyid))
             return
 
         if result:
@@ -89,43 +89,53 @@ class EveKeysModule(Module):
                                      vcode,
                                      irc_account,
                                      result['characters'])
-            self.results.put((request, summary))
             return
-
         except DatabaseError as e:
             _log.warn("Database error saving key(%s): %s" % (keyid, e))
             self.results.put((request, "Database error, try again later."))
             return
 
+        self.results.put((request, summary))
+
     def _save_key_info(keyid, vcode, irc_account, characters):
         session = schema.Session()
 
-        irc_account = metadata['account'].lower()
-        account, _ = schema.find_or_create(session,
-                                           schema.Account,
-                                           account=irc_account)
+        irc_account = metadata['account']
 
-        # add key to the account
-        key, _ = schema.find_or_create(session,
-                                       schema.ApiKey,
-                                       keyid=keyid,
-                                       vcode=vcode)
+        # find or create account
+        account = session.query(schema.Account).get(irc_account)
+        if not account:
+            account = schema.Account(irc_account, False)
 
-        # add characters
+        # find or create an associated key
+        key = session.query(schema.ApiKey).get(keyid)
+        if key:
+            key.vcode = vcode
+        else:
+            key = schema.ApiKey(keyid, vcode)
+            account.keys.add(key)
+
+        # update/delete existing characters
+        for character in key.characters:
+            if character.name in characters:
+                character.corp = characters[character.name]['corp']
+                del(characters[character.name])
+            else:
+                session.delete(character)
+
+        # add new characters
         for character in characters.itervalues():
-            data = { 'name': character['name'],
-                     'corp': character['corp']['name'] }
-            char, _ = schema.find_or_create(session,
-                                            schema.Character,
-                                            data=data,
-                                            name=character['name'])
+            key.characters.add(schema.Character(character['name'],
+                                                character['corp']))
 
+        # save everything
+        session.add(account)
         session.commit()
         return "%d characters added: %s" % (
             len(characters),
             ", ".join([char['name'] for char in characters]))
 
-    def add_key(self, **kwargs):
+    def add_key(self, keyid, vcode, metadata):
         """Look up a given API key, associate with account and characters.
 
         Args:
@@ -133,7 +143,10 @@ class EveKeysModule(Module):
             vcode - API key verification.
             metadata['account'] - IRC account name.
         """
-        self.tasks.put(kwargs)
+        request = { 'keyid': keyid,
+                    'vcode': vcode,
+                    'metadata': metadata }
+        self.tasks.put(request)
 
 
 # vim: set ts=4 sts=4 sw=4 et:
