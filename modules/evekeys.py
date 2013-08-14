@@ -64,7 +64,7 @@ class EveKeysModule(Module):
     def _add_key(request):
         keyid = request['keyid']
         vcode = request['vcode']
-        irc_account = request['metadata']['account']
+        irc_account = request['account']
 
         try:
             api = evelink.api.API(api_key(keyid, vcode), cache=self.cache)
@@ -100,8 +100,6 @@ class EveKeysModule(Module):
     def _save_key_info(keyid, vcode, irc_account, characters):
         session = schema.Session()
 
-        irc_account = metadata['account']
-
         # find or create account
         account = session.query(schema.Account).get(irc_account)
         if not account:
@@ -135,16 +133,18 @@ class EveKeysModule(Module):
             len(characters),
             ", ".join([char['name'] for char in characters]))
 
-    def add_key(self, keyid, vcode, metadata):
+    def add_key(self, keyid, vcode, account, metadata):
         """Look up a given API key, associate with account and characters.
 
         Args:
             keyid - API key id.
             vcode - API key verification.
-            metadata['account'] - IRC account name.
+            account - IRC account name.
+            metadata - context object passed through
         """
         request = { 'keyid': keyid,
                     'vcode': vcode,
+                    'account': account,
                     'metadata': metadata }
         self.tasks.put(request)
 
